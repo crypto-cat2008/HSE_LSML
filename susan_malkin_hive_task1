@@ -1,0 +1,47 @@
+drop table if exists errors1;
+
+create table errors1 as select * from clickstream where lower(event_type) like '%error%';
+
+drop table if exists errors_filtered;
+
+create table errors_filtered as
+        select user_id as u_id, session_id as s_id, min(timestamp) as min_t
+        from errors1
+        group by user_id, session_id;
+
+
+drop table if exists pages;
+
+create table pages as
+        select * from clickstream where lower(event_type) = 'page';
+
+drop table if exists results;
+
+create table results as
+        select * from pages left join errors_filtered
+        on pages.user_id = errors_filtered.u_id and pages.session_id = errors_filtered.s_id;
+
+drop table if exists filtered;
+
+create table filtered as select user_id, session_id, event_page, timestamp, nvl(min_t, 1646883661) as mint
+from results;
+
+drop table if exists f2;
+
+create table f2 as select * from filtered where timestamp < mint;
+
+drop table if exists aa;
+
+create table aa as
+        select user_id, session_id, collect_set(event_page) 
+	over (partition by user_id, session_id order by timestamp) as route
+        from f2;
+
+drop table if exists bb;
+
+create table bb as
+        select user_id, session_id, max(route) as m_route
+        from aa
+	group by user_id, session_id;
+
+select m_route, count(m_route) r_count from bb group by m_route order by r_count desc limit 30; 
